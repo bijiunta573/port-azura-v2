@@ -3,17 +3,132 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
+<link rel="icon" href="data:,">
+<title>Port Azura — an open-world crime game</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1020; font-family: "Segoe UI", system-ui, sans-serif; }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; display: none; }
+  #hud.on { display: block; }
+  #minimap { position: absolute; left: 16px; bottom: 16px; width: 168px; height: 168px;
+    border: 3px solid rgba(255,255,255,.75); border-radius: 50%; background: #123;
+    box-shadow: 0 4px 18px rgba(0,0,0,.5); }
+  #topbar { position: absolute; top: 12px; right: 16px; text-align: right; }
+  #money { font-size: 26px; font-weight: 800; color: #7dff9a; text-shadow: 0 2px 6px #000; letter-spacing: 1px; }
+  #wanted { font-size: 24px; letter-spacing: 3px; color: #ffd23e; text-shadow: 0 2px 6px #000; min-height: 30px; }
+  #wanted .off { color: rgba(255,255,255,.25); }
+  #healthwrap { margin-top: 6px; width: 190px; height: 14px; margin-left: auto;
+    background: rgba(0,0,0,.55); border: 2px solid rgba(255,255,255,.7); border-radius: 7px; overflow: hidden; }
+  #health { height: 100%; width: 100%; background: linear-gradient(90deg,#ff5f6d,#ffc371); transition: width .15s; }
+  #armour-label { font-size: 11px; opacity: .85; letter-spacing: 2px; }
+  #objective { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); max-width: 640px;
+    background: rgba(5,10,25,.72); border-left: 5px solid #ff2e88; padding: 10px 18px; border-radius: 6px;
+    font-size: 16px; line-height: 1.35; text-align: center; box-shadow: 0 4px 16px rgba(0,0,0,.45); }
+  #objective b { color: #ffd23e; }
+  #objective .dist { color: #6ee7ff; font-weight: 700; }
+  #toast { position: absolute; left: 50%; top: 84px; transform: translateX(-50%); font-size: 21px; font-weight: 700;
+    color: #fff; text-shadow: 0 2px 8px #000; opacity: 0; transition: opacity .3s; text-align: center; }
+  #speedo { position: absolute; right: 22px; bottom: 22px; font-size: 30px; font-weight: 800; display: none;
+    text-shadow: 0 2px 8px #000; }
+  #speedo small { font-size: 13px; opacity: .8; }
+  #prompt { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); font-size: 17px; font-weight: 700;
+    background: rgba(5,10,25,.7); padding: 7px 14px; border-radius: 20px; display: none; }
+  #prompt kbd { background: #ffd23e; color: #111; border-radius: 4px; padding: 1px 7px; margin-right: 6px; }
+  #missionbanner { position: absolute; left: 50%; top: 38%; transform: translate(-50%,-50%); text-align: center;
+    opacity: 0; transition: opacity .4s; }
+  #missionbanner .big { font-size: 44px; font-weight: 900; letter-spacing: 2px; color: #ffd23e; text-shadow: 0 4px 18px #000; }
+  #missionbanner .sub { font-size: 19px; color: #fff; text-shadow: 0 2px 8px #000; margin-top: 4px; }
+  #vignette { position: fixed; inset: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(200,0,30,.55) 100%); }
+
+  /* ---------- Screens ---------- */
+  .screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    flex-direction: column; text-align: center; color: #fff; z-index: 10;
+    background: linear-gradient(180deg, rgba(8,6,32,.55), rgba(30,4,44,.78)); }
+  .screen.on { display: flex; }
+  .screen h1 { font-size: 64px; margin: 0; letter-spacing: 3px; font-weight: 900;
+    background: linear-gradient(90deg,#6ee7ff,#ff2e88,#ffd23e); -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 4px 14px rgba(0,0,0,.6)); }
+  .screen h2 { font-size: 34px; margin: 0 0 8px; letter-spacing: 2px; }
+  .screen p { max-width: 560px; line-height: 1.5; font-size: 16px; margin: 8px 24px; text-shadow: 0 2px 6px #000; }
+  .screen .controls { font-size: 14px; opacity: .92; columns: 2; column-gap: 44px; text-align: left; margin-top: 6px; }
+  .screen .controls div { margin: 3px 0; break-inside: avoid; }
+  .screen kbd { background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.45); border-bottom-width: 3px;
+    border-radius: 5px; padding: 0 7px; font-family: inherit; font-weight: 700; }
+  .btn { pointer-events: auto; cursor: pointer; margin-top: 18px; font-size: 20px; font-weight: 800; letter-spacing: 1px;
+    color: #14100a; background: linear-gradient(90deg,#ffd23e,#ff9a3e); border: 0; border-radius: 30px; padding: 13px 42px;
+    box-shadow: 0 6px 22px rgba(0,0,0,.5); }
+  .btn:hover { filter: brightness(1.1); }
+  .btn.ghost { background: rgba(255,255,255,.14); color: #fff; border: 2px solid rgba(255,255,255,.6); }
+  #errbox { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; color: #fff;
+    background: #20101a; z-index: 50; font-size: 18px; padding: 30px; text-align: center; }
 </style>
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
+<canvas id="scene" aria-label="Port Azura: explore the city on foot and by car"></canvas>
 <p id="status" role="status" aria-live="polite"></p>
+
+<div id="hud">
+  <canvas id="minimap" width="336" height="336"></canvas>
+  <div id="topbar">
+    <div id="wanted"></div>
+    <div id="money">$0</div>
+    <div id="healthwrap"><div id="health"></div></div>
+    <div id="armour-label">HEALTH</div>
+  </div>
+  <div id="toast"></div>
+  <div id="objective"></div>
+  <div id="prompt"></div>
+  <div id="speedo">0 <small>KM/H</small></div>
+  <div id="missionbanner"><div class="big"></div><div class="sub"></div></div>
+</div>
+<div id="vignette"></div>
+
+<div class="screen" id="screen-title">
+  <h1>PORT AZURA</h1>
+  <p><b>One courier. One neon city. Every cop in town.</b><br>
+  You are <b>Rico Vale</b>, a wheelman fresh off the ferry with nothing but a phone full of
+  bad contacts. Run jobs for the Marisol crew, keep the Azura PD off your tail, and buy your
+  way out of Port Azura before the heat becomes permanent.</p>
+  <div class="controls">
+    <div><kbd>W A S D</kbd> walk / drive</div>
+    <div><kbd>Shift</kbd> sprint</div>
+    <div><kbd>E</kbd> enter / exit car</div>
+    <div><kbd>Mouse</kbd> orbit camera</div>
+    <div><kbd>Click</kbd> or <kbd>F</kbd> shoot pistol</div>
+    <div><kbd>Space</kbd> handbrake</div>
+    <div><kbd>H</kbd> horn</div>
+    <div><kbd>P</kbd> pause &nbsp; <kbd>M</kbd> mute</div>
+  </div>
+  <button class="btn" id="btn-start">START ENGINE</button>
+  <button class="btn ghost" id="btn-continue" style="display:none">CONTINUE SAVED GAME</button>
+</div>
+
+<div class="screen" id="screen-pause">
+  <h2>PAUSED</h2>
+  <p id="pause-stats"></p>
+  <button class="btn" id="btn-resume">RESUME</button>
+  <button class="btn ghost" id="btn-restart">RESTART STORY</button>
+</div>
+
+<div class="screen" id="screen-over">
+  <h2 id="over-title">BUSTED</h2>
+  <p id="over-text"></p>
+  <button class="btn" id="btn-respawn">RESPAWN</button>
+</div>
+
+<div class="screen" id="screen-win">
+  <h2>🏆 KING OF PORT AZURA</h2>
+  <p id="win-text"></p>
+  <button class="btn" id="btn-free">FREE ROAM</button>
+</div>
+
+<div id="errbox"><div>Port Azura needs WebGL to run.<br>Please open it in a desktop browser with hardware acceleration enabled.</div></div>
+
+<script src="./vendor/three.min.js"></script>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

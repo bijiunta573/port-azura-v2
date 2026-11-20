@@ -1,53 +1,54 @@
-// Keyboard and pointer input. Held keys give a steering direction; one-shot presses (start or
-// restart, pause) are queued as bit flags and taken once by the loop, so a press between two
-// frames is never lost and never counted twice.
+// Keyboard and mouse input for Port Azura.
+// Held keys are polled each frame; one-shot presses (pause, interact, horn, shoot)
+// are latched so a press between frames is never lost.
 
-export const ACTION_CONFIRM = 1;
-export const ACTION_PAUSE = 2;
+const HELD = new Set();
+const PRESSED = new Set();
+let mouseDX = 0;
+let mouseDown = false;
+let dragging = false;
 
-const LEFT = new Set(['ArrowLeft', 'KeyA']);
-const RIGHT = new Set(['ArrowRight', 'KeyD']);
-const CONFIRM = new Set(['Space', 'Enter']);
-const PAUSE = new Set(['KeyP', 'Escape']);
-
-export function createInput(target) {
-  let left = false;
-  let right = false;
-  let actions = 0;
-
+export function createInput(canvas) {
   window.addEventListener('keydown', (event) => {
-    if (LEFT.has(event.code)) left = true;
-    else if (RIGHT.has(event.code)) right = true;
-    else if (CONFIRM.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_CONFIRM;
-    } else if (PAUSE.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_PAUSE;
-    } else return;
-    event.preventDefault();
+    if (!event.repeat) PRESSED.add(event.code);
+    HELD.add(event.code);
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) {
+      event.preventDefault();
+    }
   });
-  window.addEventListener('keyup', (event) => {
-    if (LEFT.has(event.code)) left = false;
-    else if (RIGHT.has(event.code)) right = false;
+  window.addEventListener('keyup', (event) => HELD.delete(event.code));
+  window.addEventListener('blur', () => { HELD.clear(); mouseDown = false; dragging = false; });
+
+  canvas.addEventListener('pointerdown', (event) => {
+    mouseDown = true;
+    dragging = true;
+    canvas.setPointerCapture(event.pointerId);
   });
-  // A key released while the tab is hidden never sends keyup: let go of everything on blur.
-  window.addEventListener('blur', () => {
-    left = false;
-    right = false;
-  });
-  target.addEventListener('pointerdown', () => {
-    actions |= ACTION_CONFIRM;
+  window.addEventListener('pointerup', () => { mouseDown = false; dragging = false; });
+  window.addEventListener('pointermove', (event) => {
+    if (dragging) mouseDX += event.movementX || 0;
   });
 
   return {
-    /** -1 for left, 1 for right, 0 for neither or both. */
-    direction() {
-      return (right ? 1 : 0) - (left ? 1 : 0);
+    held: (code) => HELD.has(code),
+    /** True once per physical press; consumes the latch. */
+    pressed(code) {
+      if (!PRESSED.has(code)) return false;
+      PRESSED.delete(code);
+      return true;
     },
-    /** The one-shot presses since the last call, as ACTION_* flags. */
-    takeActions() {
-      const taken = actions;
-      actions = 0;
-      return taken;
+    get mouseDown() { return mouseDown; },
+    /** Horizontal mouse drag since the last call, in pixels. */
+    takeMouseDX() {
+      const dx = mouseDX;
+      mouseDX = 0;
+      return dx;
+    },
+    /** Forward/strafe axes from WASD and the arrow keys, each -1..1. */
+    axes() {
+      const f = (HELD.has('KeyW') || HELD.has('ArrowUp') ? 1 : 0) - (HELD.has('KeyS') || HELD.has('ArrowDown') ? 1 : 0);
+      const s = (HELD.has('KeyD') || HELD.has('ArrowRight') ? 1 : 0) - (HELD.has('KeyA') || HELD.has('ArrowLeft') ? 1 : 0);
+      return { f, s };
     },
   };
 }
